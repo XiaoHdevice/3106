@@ -584,19 +584,36 @@ enum WallpaperLayoutScanner {
     }
 
     static func sameDirectory(_ lhs: URL, _ rhs: URL) -> Bool {
-        func canonical(_ url: URL) -> String {
-            LaunchServicesStore.canonicalContainerPath(
-                url.standardizedFileURL.resolvingSymlinksInPath().path
-            )
-        }
-        return canonical(lhs) == canonical(rhs)
+        !pathSpellings(lhs).isDisjoint(with: pathSpellings(rhs))
     }
 
     static func isContained(_ candidate: URL, in root: URL) -> Bool {
-        LaunchServicesStore.isPath(
-            candidate.standardizedFileURL.resolvingSymlinksInPath().path,
-            containedIn: root.standardizedFileURL.resolvingSymlinksInPath().path
-        )
+        let roots = pathSpellings(root)
+        for candidatePath in pathSpellings(candidate) {
+            for rootPath in roots {
+                if candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/") {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    // iOS 27 resolution can leave /var and /private/var unmatched; compare all spellings.
+    private static func pathSpellings(_ url: URL) -> Set<String> {
+        let base = url.standardizedFileURL
+        var result: Set<String> = []
+        for path in [base.path, base.resolvingSymlinksInPath().path] {
+            var trimmed = path
+            while trimmed.count > 1 && trimmed.hasSuffix("/") {
+                trimmed.removeLast()
+            }
+            result.insert(LaunchServicesStore.canonicalContainerPath(trimmed))
+            if trimmed == "/private/var" || trimmed.hasPrefix("/private/var/") {
+                result.insert(String(trimmed.dropFirst("/private".count)))
+            }
+        }
+        return result
     }
 }
 
